@@ -1,0 +1,274 @@
+* Literate programming
+   Literally what?
+   #+begin_quote
+   Literally explain more, code less. - Literate me
+   #+end_quote
+   
+   Or more formally:
+   #+begin_quote
+   the idea that one could create software as works of literature, by embedding
+   source code inside descriptive text, rather than the reverse (as is common
+   practice in most programming languages), in an order that is convenient for
+   exposition to human readers, rather than in the order demanded by the
+   compiler. cite:wiki:WEB
+   #+end_quote
+  
+   #+begin_src elisp :exports none
+     (org-babel-do-load-languages
+      'org-babel-load-languages
+      '((shell . t)))
+   #+end_src
+
+   The fact that you can write code...
+  
+   #+begin_src shell :exports both
+     echo "...and the get results inserted..."
+   #+end_src
+
+   #+RESULTS:
+   : > ...and the get results inserted...
+  
+   ...directly in the file you write ideas, format and export in any you want
+   gives you the /dis/ advantage of having no excuses to let your thoughts flow
+   and document your problem resolution process.[fn:1]
+   
+   =The program becomes the documentation.=
+  
+   That being said, start =emacs=
+
+** TODO Exporting
+   Will address later.
+
+*** Dependencies on OSX
+   #+begin_src bash
+     brew install tlmgr Pygments
+     tlmgr install wrapfig capt-of dvipng latex \
+           collection-fontsrecommended censor \
+           pbox ifnextok relsize minted \
+           fvextra xstring framed
+   #+end_src
+   
+*** Random config to syntax highlight pdfs
+   #+begin_src elisp
+     (setq org-latex-listings 'minted)
+     (setq org-latex-packages-alist '(("" "minted")))
+     (add-to-list 'org-latex-minted-langs '(elisp "common-lisp"))
+     (add-to-list 'org-latex-minted-langs '(purescript "haskell"))
+     (add-to-list 'org-latex-minted-langs '(sh "bash"))
+
+     (setq org-latex-minted-options
+           '(("frame" "leftline")
+             ("fontsize" "\\scriptsize")
+             ("linenos" "")
+             ("framerule" "0.4pt")
+             ("framesep" "4pt")))
+   #+end_src
+
+* On purescript
+** Setup
+   A good starting point i found is [[https://acidwords.com/posts/2016-09-21-literate-programming-with-monroe-and-org-mode.html][Literate programming with Monroe and org-mode]]
+   cite:acid:literate, the org and emacs documentation is good but sometimes i'm
+   in =M-x show-me-the-code-mode= so here's the =org-babel-execute:purescript=
+   function:
+
+   #+CAPTION: This is the function run when =C-c C-c= /ing/
+   #+NAME: org-babel-execute:purescript
+   #+begin_src emacs-lisp -n -r :exports code
+     (defun org-babel-execute:purescript (body params)
+       (setq output "")
+       (-if-let (process (get-buffer-process (psci--process-name psci/buffer-name))) (ref:psci-process)
+           (progn
+             (psci--run-psci-command! body)                           (ref:psci-run)
+             (accept-process-output process 0.5 nil t)
+             (add-hook 'comint-preoutput-filter-functions 'collect)
+             (while (not (end-p output))
+               (accept-process-output process 0.5 nil t))
+             (remove-hook 'comint-preoutput-filter-functions 'collect)
+             (clean output))
+         "REPL is not running"))
+   #+end_src
+
+   I grabbed the =psci= process [[(psci-process)][(line (psci-process))]] and send [[(psci-run)][(line (psci-run))]]
+   function from package =psci.el= cite:spacemacs:purescript to avoid the never
+   ending boilerplate of creating my own.
+
+   The rest inspired from cite:acid:literate.
+
+   Since i don't want to be limited by the version of the tools: compiler,
+   package manager, etc, i don't have =spago=, =purescript= or =bower= installed
+   globally (except maybe =psvm=).
+
+   
+   This means the path to the executable needs to be specified
+   #+begin_src emacs-lisp
+     (setq psci/spago-path "./node_modules/.bin/spago")
+   #+end_src
+
+   #+RESULTS:
+   : ./node_modules/.bin/spago
+   
+   Remember to install first!
+   #+begin_src shell :results output
+     #npm ci
+     npm run deps
+   #+end_src
+
+   #+RESULTS:
+   : 
+   : > applicative-parser-combinators@1.0.0 deps /Users/lalo/dev/notes/applicative-parser-combinators
+   : > spago install
+   : 
+   : Installation complete.
+
+   Then you can just run =M-x psci= and be able to evaluates code directly from
+   emacs org-mode. (=C-c C-c=)
+   #+begin_src purescript
+     :h
+   #+end_src
+
+   #+RESULTS:
+   #+begin_example
+   The following commands are available:
+
+       :?                        Show this help menu
+       :quit                     Quit PSCi
+       :reload                   Reload all imported modules while discarding bindings
+       :clear                    Discard all imported modules and declared bindings
+       :browse      <module>     See all functions in <module>
+       :type        <expr>       Show the type of <expr>
+       :kind        <type>       Show the kind of <type>
+       :show        import       Show all imported modules
+       :show        loaded       Show all loaded modules
+       :show        print        Show the repl's current printing function
+       :paste       paste        Enter multiple lines, terminated by ^D
+       :complete    <prefix>     Show completions for <prefix> as if pressing tab
+       :print       <fn>         Set the repl's printing function to <fn> (which must be fully qualified)
+
+   Further information is available on the PureScript documentation repository:
+    --> https://github.com/purescript/documentation/blob/master/guides/PSCi.md
+   #+end_example
+   
+   Something interesting to note is that unlike originals =psci= load commands,
+   this doesn't wrap your code in src_purescript{import module}, which means you
+   can send whatever you want to the repl, =:clear=, =:reload=????
+   
+   Here's the rest of the code which i find trivial and unrelated to the
+   subject, just helpers for the main function.
+   #+begin_src elisp :exports code
+     (setq prompt "^> $")
+
+     (defun prompt-p (text)
+       "Returns `t' if text matches `prompt'"
+       (string-match-p prompt text))
+
+     (defun empty-p (text)
+       "Returns `t' if `text' is empty or nil"
+       (= (length text) 0))
+
+     (defun collect (value)
+       "Append `value' to `output'
+
+     Don't do anything to the output here, just redirect it.
+     "
+       (setq output (concat output value))
+       value)
+
+     (defvar output "" "Last execution output")
+
+     (defun end-p (output)
+       "Returns `t' if `output' has ended"
+       (let ((lines (reverse (s-split "\n" output))))
+         (prompt-p (car lines))))
+
+     (defun clean (output)
+       "Removes `prompt' from `output' along with empty-lines"
+       (let ((lines (reverse (s-split "\n" output))))
+         (while (and (not (null (car lines)))
+                     (or
+                      (prompt-p (car lines))
+                      (empty-p (car lines))))
+           (setq lines (cdr lines)))
+         (s-join "\n" (reverse lines))))
+   #+end_src
+   
+** TODO Applicative parser combinators
+   With the setup covered, i'll jump right into the codedumimplentation[fn:2] and
+   try to uncover knowledge by experimentation.
+
+   \vspace{20pt}
+   =Disclaimer: i have no idea what i'm doing=
+   \vspace{20pt}
+   
+*** Defining the domain of the problem:
+   
+    Theres a library called [[https://github.com/dubzzz/fast-check][fast-check]] on TypeScript that allows you to do
+    property based testing,a kind of generative testing inwhich you just provide
+    the types you need and data is generated for you to test on your model and
+    see that it checks.
+    \vspace{20pt}
+   
+    From its =README=:
+    #+begin_quote
+    Property based testing frameworks check the truthfulness of properties. A
+    property is a statement like: for all (x, y, ...) such as precondition(x, y,
+    ...) holds property(x, y, ...) is true.
+    #+end_quote
+   
+    This is good, except for the fact that it's too verbose (the code below)
+    #+begin_src typescript
+      describe('createArray', () => {
+        it('should always produce an array taking care of settings', () =>
+           fc.assert(
+             fc.property(
+               fc.record(
+                 {
+                   minimum_size: fc.nat(100),
+                   maximum_size: fc.nat(100)
+                 },
+                 { withDeletedKeys: true }
+               ),
+               settings => {
+                 const out = createArray(() => 0, settings);
+                 if (settings.minimum_size != null) assert.ok(out.length >= settings.minimum_size);
+                 if (settings.maximum_size != null) assert.ok(out.length <= settings.maximum_size);
+               }
+             )
+           ));
+      });
+    #+end_src
+   
+    Here's how it looks if we remove =fast=check= 
+    #+begin_src typescript
+      describe('createArray', () => {
+        it('should always produce an array taking care of settings', settings => {
+          const out = createArray(() => 0, settings);
+          if (settings.minimum_size != null) assert.ok(out.length >= settings.minimum_size);
+          if (settings.maximum_size != null) assert.ok(out.length <= settings.maximum_size);
+        });
+      });
+    #+end_src
+   
+    From 18 to 6 lines 🤔.
+
+    I'm already typing my code with typescript. It would make sense to use the
+    same data i declared to avoid all the hassle of writing it twice.
+   
+    The problem is typescript's =typelevel= information does not live on the same
+    domain as the code and it is unaccesible from the instances and runtime in
+    which it lives.
+   
+    The data either needs to be lifted to type level, or the types downcasted to data?
+
+    ... cont
+  
+* References                                                       :no_title:
+  bibliography:applicative-parser-combinators.bib 
+  bibliographystyle:plain
+  
+* Footnotes
+
+[fn:2] A mix of code, documentation, implementation. And bugs implicit from the fact that /this is a test/
+
+
+[fn:1] So anyone can read, understand, and replicate. The world would be a beautiful place.
+

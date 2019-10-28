@@ -1,0 +1,6 @@
+* On \LaTeX
+** TODO OSX
+   Extract from the other folder
+
+https://tex.stackexchange.com/questions/160176/usepackagescaledhelvet-fails-on-mac-with-basictex?answertab=votes#tab-top
+
